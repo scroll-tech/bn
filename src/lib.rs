@@ -57,7 +57,7 @@ impl Fr {
     pub fn new(val: arith::U256) -> Option<Self> {
         fields::Fr::new(val).map(|x| Fr(x))
     }
-    pub fn new_mul_factor(val: arith::U256) -> Self {
+    pub const fn new_mul_factor(val: arith::U256) -> Self {
         Fr(fields::Fr::new_mul_factor(val))
     }
     pub fn into_u256(self) -> arith::U256 {

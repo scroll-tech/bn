@@ -199,6 +199,14 @@ pub enum Error {
 }
 
 impl U256 {
+    /// Initialize U256 from slice of u64 limbs
+    pub const fn from_u64_limbs(d: [u64; 4]) -> Self {
+        let mut a = [0u128; 2];
+        a[0] = (d[1] as u128) << 64 | d[0] as u128;
+        a[1] = (d[3] as u128) << 64 | d[2] as u128;
+        U256(a)
+    }
+
     /// Initialize U256 from slice of bytes (big endian)
     pub fn from_slice(s: &[u8]) -> Result<U256, Error> {
         if s.len() != 32 {

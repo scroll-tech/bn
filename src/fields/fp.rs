@@ -98,7 +98,7 @@ impl Fr {
     }
 
     /// Converts a U256 to an Fr regardless of modulus.
-    pub fn new_mul_factor(a: U256) -> Self {
+    pub const fn new_mul_factor(a: U256) -> Self {
         Fr(a)
     }
 
