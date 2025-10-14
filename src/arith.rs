@@ -327,22 +327,8 @@ impl U256 {
 
     /// Multiply `self` by `other` (mod `modulo`)
     pub fn mul(&mut self, other: &U256, modulo: &U256) {
-        #[cfg(target_os = "zkvm")]
-        {
-            unsafe {
-                sp1_lib::sys_bigint(
-                    (&mut self.0) as *mut [u128; 2] as *mut [u32; 8],
-                    0,
-                    (&self.0) as *const [u128; 2] as *const [u32; 8],
-                    (&other.0) as *const [u128; 2] as *const [u32; 8],
-                    (&modulo.0) as *const [u128; 2] as *const [u32; 8],
-                );
-            }
-        }
-        #[cfg(not(target_os = "zkvm"))]
-        {
-            self.cpu_mul(other, modulo);
-        }
+        // TODO: use syscall when available
+        self.cpu_mul(other, modulo);
     }
 
     /// Turn `self` into its additive inverse (mod `modulo`)
@@ -411,7 +397,7 @@ impl U256 {
 
     /// Return an Iterator<Item=bool> over all bits from
     /// MSB to LSB.
-    pub fn bits(&self) -> BitIterator {
+    pub fn bits(&self) -> BitIterator<'_> {
         BitIterator { int: self, n: 256 }
     }
 

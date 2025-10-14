@@ -8,11 +8,7 @@ use rand::Rng;
 use super::Sqrt;
 
 #[cfg(target_os = "zkvm")]
-use {
-    bytemuck::{cast_ref, cast_mut, cast},
-    sp1_lib::io::{hint_slice, read_vec},
-    core::convert::TryInto,
-};
+use bytemuck::{cast_ref, cast_mut};
 
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, NoUninit, AnyBitPattern)]
@@ -189,31 +185,7 @@ impl FieldElement for Fr {
             return None;
         }
 
-        #[cfg(target_os = "zkvm")]
-        {
-            // Compute the inverse in an unconstrained block 
-            sp1_lib::unconstrained! {
-                // the element was previously checked to be nonzero
-                if let Some(inv) = self.cpu_inverse() {
-                    let bytes = cast::<[u128; 2], [u8; 32]>(inv.0.0);
-                    hint_slice(&bytes);
-                } else {
-                    unreachable!();
-                }
-            }
-
-            let byte_vec = sp1_lib::io::read_vec();
-            let bytes: [u8; 32] = byte_vec.try_into().unwrap();
-
-            let inv = Fr::new(U256(cast::<[u8; 32], [u128; 2]>(bytes))).unwrap();
-            
-            // Check that the inverse is correct
-            assert!(inv * self == Fr::one(), "Invalid hint supplied for Fq inverse");
-            
-            return Some(inv);
-        }
-        
-        #[cfg(not(target_os = "zkvm"))]
+        // TODO: Use the zkvm syscall when available.
         self.cpu_inverse()
     }
 }
@@ -269,27 +241,8 @@ impl Mul for Fr {
 impl MulAssign for Fr {
     #[inline]
     fn mul_assign(&mut self, other: Fr) {
-        #[cfg(target_os = "zkvm")]
-        {
-            let mut result: [u32; 8] = [0u32; 8];
-            let lhs = cast::<[u128; 2], [u32; 8]>(self.0 .0);
-            let rhs = cast::<[u128; 2], [u32; 8]>(other.0 .0);
-            let modulus = cast::<[u128; 2], [u32; 8]>(Fr::modulus().0);
-            unsafe {
-                sp1_lib::sys_bigint(
-                    &mut result as *mut [u32; 8],
-                    0,
-                    &lhs as *const [u32; 8],
-                    &rhs as *const [u32; 8],
-                    &modulus as *const [u32; 8],
-                );
-                self.0 = U256::from(cast::<[u32; 8], [u64; 4]>(result));
-            }
-        }
-        #[cfg(not(target_os = "zkvm"))]
-        {
-            *self = self.cpu_mul(other);
-        }
+        // TODO: Use the zkvm syscall when available.
+        *self = self.cpu_mul(other);
     }
 }
 
@@ -518,11 +471,9 @@ impl Fq {
     pub(crate) fn add_inp(&mut self, other: &Fq) {
         #[cfg(target_os = "zkvm")]
         {
-            let mut lhs = cast_mut::<Fq, [u32; 8]>(self);
+            let lhs = cast_mut::<Fq, [u32; 8]>(self);
             let rhs = cast_ref::<Fq, [u32; 8]>(&other);
-            unsafe {
-                sp1_lib::syscall_bn254_fp_addmod(lhs.as_mut_ptr(), rhs.as_ptr());
-            }
+            ceno_syscall::syscall_bn254_fp_addmod(lhs, rhs);
         }
         #[cfg(not(target_os = "zkvm"))]
         {
@@ -533,18 +484,8 @@ impl Fq {
     #[inline]
     #[allow(dead_code)]
     pub(crate) fn sub_inp(&mut self, other: &Fq) {
-        #[cfg(target_os = "zkvm")]
-        {
-            let mut lhs = cast_mut::<Fq, [u32; 8]>(self);
-            let rhs = cast_ref::<Fq, [u32; 8]>(&other);
-            unsafe {
-                sp1_lib::syscall_bn254_fp_submod(lhs.as_mut_ptr(), rhs.as_ptr());
-            }
-        }
-        #[cfg(not(target_os = "zkvm"))]
-        {
-            *self = self.cpu_sub(*other);
-        }
+        // TODO: Use the zkvm syscall when available.
+        *self = self.cpu_sub(*other);
     }
 
     #[inline]
@@ -554,9 +495,7 @@ impl Fq {
         {
             let lhs = cast_mut::<Fq, [u32; 8]>(self);
             let rhs = cast_ref::<Fq, [u32; 8]>(&other);
-            unsafe {
-                sp1_lib::syscall_bn254_fp_mulmod(lhs.as_mut_ptr(), rhs.as_ptr());
-            }
+            ceno_syscall::syscall_bn254_fp_mulmod(lhs, rhs);
         }
         #[cfg(not(target_os = "zkvm"))]
         {
@@ -590,29 +529,7 @@ impl FieldElement for Fq {
             return None;
         }
 
-        #[cfg(target_os = "zkvm")]
-        {
-            // Compute the inverse using the zkvm syscall
-            sp1_lib::unconstrained! {
-                if let Some(inv) = self.cpu_inverse() {
-                    let bytes = cast::<[u128; 2], [u8; 32]>(inv.0.0);
-                    hint_slice(&bytes);
-                } else {
-                    // Weve checked the element is nonzero.
-                    unreachable!();
-                }
-            }
-            let byte_vec = read_vec();
-            let bytes: [u8; 32] = byte_vec.try_into().unwrap();
-
-            let inv = Fq::new(U256(cast::<[u8; 32], [u128; 2]>(bytes))).unwrap();
-            
-            assert!(inv * self == Fq::one(), "Invalid hint supplied for Fq inverse");
-
-            return Some(inv);
-        }
-        
-        #[cfg(not(target_os = "zkvm"))]
+        // TODO: Use the zkvm syscall when available.
         self.cpu_inverse()
     }
 }
@@ -749,69 +666,7 @@ impl Fq {
             }
         }
 
-        #[cfg(target_os = "zkvm")]
-        {
-            if self.is_zero() {
-                return Some(Self::zero());
-            }
-
-            let nqr_f_q = Fq::new(3_u64.into()).unwrap();
-
-            // Compute the square root in unconstrained mode.
-            //
-            // We can hint back to the VM and contrain for correctness.
-            sp1_lib::unconstrained! {
-                let mut buf = [0u8; 33];
-                
-                if let Some(root) = cpu_sqrt(self) {
-                    // We have a valid square root, lets constrain it.
-                    let bytes = cast::<[u128; 2], [u8; 32]>(root.0.0);
-
-                    buf[32] = 1;
-                    buf[..32].copy_from_slice(&bytes);
-
-                    hint_slice(&buf);
-                } else {
-                    // `self` is not a square, so we can use a known NQR to constrain the result.
-                    let has_root = nqr_f_q.cpu_mul(*self);
-                    let root = cpu_sqrt(&has_root).expect("nqr_f_q * self is a quadratic residue if self if not.");
-
-                    let bytes = cast::<[u128; 2], [u8; 32]>(root.0.0);
-                    
-                    buf[32] = 0;
-                    buf[..32].copy_from_slice(&bytes);
-                    
-                    hint_slice(&buf);
-                }
-            }
-
-            let byte_vec = read_vec();
-            let choice = byte_vec[32];
-            let bytes: [u8; 32] = byte_vec[..32].try_into().unwrap();
-
-            match choice {
-                0 => {
-                    // The hint has indicated that the square root is not a quadratic residue
-                    //
-                    // We can constrain this by using a known NQR.
-                    let has_root = nqr_f_q * *self;
-                    let root = Fq::new(U256(cast::<[u8; 32], [u128; 2]>(bytes))).unwrap();
-
-                    assert!(root * root == has_root, "Invalid hint supplied for Fq sqrt");
-                    
-                    return None;
-                },  
-                _ => {
-                    let sqrt = Fq::new(U256(cast::<[u8; 32], [u128; 2]>(bytes))).unwrap();
-                    
-                    assert!(sqrt * sqrt == *self, "Invalid hint supplied for Fq sqrt");
-
-                    return Some(sqrt);
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "zkvm"))]
+        // TODO: Use the zkvm syscall when available.
         cpu_sqrt(self)
     }
 }

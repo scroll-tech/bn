@@ -14,7 +14,7 @@ use core::{
 
 use rand::Rng;
 #[cfg(target_os = "zkvm")]
-use sp1_lib::{syscall_bn254_add, syscall_bn254_double};
+use ceno_syscall::{syscall_bn254_add, syscall_bn254_double};
 // This is the NAF version of ate_loop_count. Entries are all mod 4, so 3 = -1
 // n.b. ate_loop_count = 0x19d797039be763ba8
 //                     = 11001110101111001011100000011100110111110011101100011101110101000
