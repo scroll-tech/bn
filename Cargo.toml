@@ -31,7 +31,7 @@ bytemuck = { version = "1.16.1", features = ["derive"] }
 num-bigint = { version = "0.4.6", default-features = false }
 
 [target.'cfg(target_os = "zkvm")'.dependencies]
-ceno_syscall = { git = "https://github.com/scroll-tech/ceno", default-features = false }
+ceno_syscall = { git = "https://github.com/scroll-tech/ceno-patch", default-features = false }
 
 [dev-dependencies]
 rand = { version = "0.8.3", features = ["std_rng"] }
